@@ -16,26 +16,35 @@ from reader import bin_reader, data_reader
 
 
 def char2byte(c: str):
-    return c.encode('utf-8')
+    return c.encode("utf-8")
 
 
 def byte2char(b: bytes):
-    return b.decode('utf-8')
+    return b.decode("utf-8")
 
 
 def bytes2int(b: bytes):
-    return int.from_bytes(b, 'big')
+    return int.from_bytes(b, "big")
 
 
 def isspace(b: bytes):
-    for c in ['\t', '\n', '\v', '\f', '\r', ' ']:
+    for c in ["\t", "\n", "\v", "\f", "\r", " "]:
         if b == char2byte(c):
             return True
     return False
 
 
 class UART:
-    def __init__(self, port: str, one_byte_each: bool, max_n_bytes_per_recv: int, baudrate: int, parity, stopbits, no_progress: bool):
+    def __init__(
+        self,
+        port: str,
+        one_byte_each: bool,
+        max_n_bytes_per_recv: int,
+        baudrate: int,
+        parity,
+        stopbits,
+        no_progress: bool,
+    ):
         """
         prepare and initialize UART port
 
@@ -62,10 +71,7 @@ class UART:
         print("open port.")
         try:
             self.uartport = serial.Serial(
-                port=port,
-                baudrate=baudrate,
-                parity=parity,
-                stopbits=stopbits
+                port=port, baudrate=baudrate, parity=parity, stopbits=stopbits
             )
         except serial.SerialException:
             print(traceback.format_exc())
@@ -77,7 +83,7 @@ class UART:
         time.sleep(1)
 
         self.one_byte_each = one_byte_each
-        self.progress = not(no_progress)
+        self.progress = not (no_progress)
         self.max_n_bytes_per_recv = max_n_bytes_per_recv
 
         self.ungetc_byte = None
@@ -127,7 +133,7 @@ class UART:
         """
 
         print("waiting for a 0x99 byte:")
-        while self._recv_bytes() != b'\x99':
+        while self._recv_bytes() != b"\x99":
             pass
         print("\treceived.")
 
@@ -137,7 +143,7 @@ class UART:
         """
 
         print("waiting for a 0xaa byte:")
-        while self._recv_bytes() != b'\xaa':
+        while self._recv_bytes() != b"\xaa":
             pass
         print("\treceived.")
 
@@ -185,16 +191,16 @@ class UART:
             while isspace(b):  # skip spaces
                 b = self._recv_bytes()
 
-            if b == char2byte('#'):  # skip a comment line
+            if b == char2byte("#"):  # skip a comment line
                 b = self._recv_bytes()
-                while b != char2byte('\n'):
+                while b != char2byte("\n"):
                     b = self._recv_bytes()
             else:
                 break
 
         # parse an integer
         c = byte2char(b)
-        while '0' <= c <= '9':
+        while "0" <= c <= "9":
             n = n * 10 + int(c)
             b = self._recv_bytes()
             c = byte2char(b)
@@ -214,25 +220,27 @@ class UART:
             False -> error
         """
 
-        if self._recv_bytes() != char2byte('P'):
+        if self._recv_bytes() != char2byte("P"):
             return False
 
         c = byte2char(self._recv_bytes())
-        if c == '3':
+        if c == "3":
             self.ppm_info["version"] = 3
-        elif c == '6':
+        elif c == "6":
             self.ppm_info["version"] = 6
+        elif c == "1":
+            self.ppminfo["version"] = 1
         else:
             return False
 
         # width, height, max value (read but not used)
-        for key in ["height", "width", "max"]:
+        for key in ["height", "width", "max"] if c != "1" else ["width", "height"]:
             self.ppm_info[key] = self._ppm_recv_text_number()
             if self.ppm_info[key] < 0:
                 return False
 
         # header must end with a space character
-        if not(isspace(self._recv_bytes())):
+        if not (isspace(self._recv_bytes())):
             return False
 
         return True
@@ -257,7 +265,7 @@ class UART:
         self.ppm_img.append(rgb)
         return True
 
-    def _ppm_recv_bin_pixel(self):
+    def _ppm_recv_bin_pixel_rgb(self):
         """
         receive a RGB pixel in binary format
 
@@ -288,9 +296,24 @@ class UART:
         if self.ppm_info["version"] == 3:
             return self._ppm_recv_text_pixel()
         elif self.ppm_info["version"] == 6:
-            return self._ppm_recv_bin_pixel()
+            return self._ppm_recv_bin_pixel_rgb()
+        elif self.ppm_info["version"] == 1:
+            return self._ppm_recv_bin_pixel_bw()
         else:
             return False
+
+    def _parse_pixels_for_v1(self, b: bytes):
+        """
+        receive a B&W pixel in binary format
+
+        Parameters
+        -------
+        b : bytes
+            bytes for bw pixels
+        """
+
+        for byte in b:
+            self.ppm_img.append(byte)
 
     def _parse_pixels_for_v3(self, b: bytes):
         """
@@ -317,7 +340,7 @@ class UART:
                         self.ppm_img.append(rgb)
                         rgb = []
             else:
-                p.append(c - ord('0'))
+                p.append(c - ord("0"))
 
     def _parse_pixels_for_v6(self, b: bytes):
         """
@@ -342,18 +365,24 @@ class UART:
         """
 
         print("receiving PPM data:")
-        self.raw_bin = b''
+        self.raw_bin = b""
         self.ppm_info = {}
         self.ppm_img = []
 
-        if not(self._ppm_recv_header()):
+        if not (self._ppm_recv_header()):
             print("error in PPM header")
             sys.exit()
 
         n_pixels = self.ppm_info["width"] * self.ppm_info["height"]
 
-        print("\tversion: %d\tsize: %d x %d"
-              % (self.ppm_info["version"], self.ppm_info["width"], self.ppm_info["height"]))
+        print(
+            "\tversion: %d\tsize: %d x %d"
+            % (
+                self.ppm_info["version"],
+                self.ppm_info["width"],
+                self.ppm_info["height"],
+            )
+        )
 
         if self.one_byte_each:
             ps = range(n_pixels)
@@ -362,9 +391,11 @@ class UART:
                 ps.set_description("received pixels")
 
             for u in ps:
-                if not(self._ppm_recv_pixel()):
-                    print("error in receiving pixels(%d more pixel(s) expected)."
-                          % (n_pixels - u))
+                if not (self._ppm_recv_pixel()):
+                    print(
+                        "error in receiving pixels(%d more pixel(s) expected)."
+                        % (n_pixels - u)
+                    )
                     sys.exit()
 
             self.endTime = time.perf_counter()
@@ -374,13 +405,15 @@ class UART:
                 remaining_bytes = n_pixels * 3 * 4
             elif self.ppm_info["version"] == 6:
                 remaining_bytes = n_pixels * 3
+            elif self.ppm_info["version"] == 1:
+                remaining_bytes = n_pixels
 
             bs = range(remaining_bytes)
             if self.progress:
                 bs = tqdm(bs)
                 bs.set_description("received bytes")
 
-            b = b''
+            b = b""
             while remaining_bytes > 0:
                 n_bytes_to_recv = min(remaining_bytes, self.max_n_bytes_per_recv)
                 b += self._recv_bytes(n_bytes_to_recv)
@@ -396,6 +429,8 @@ class UART:
                 self._parse_pixels_for_v3(b)
             elif self.ppm_info["version"] == 6:
                 self._parse_pixels_for_v6(b)
+            elif self.ppm_info["version"] == 1:
+                self._parse_pixels_for_v1(b)
 
         print("\tdone.")
 
@@ -410,7 +445,7 @@ class UART:
         """
 
         print("receiving raw data:")
-        self.raw_bin = b''
+        self.raw_bin = b""
 
         bs = range(n_bytes)
         if self.progress:
@@ -436,25 +471,25 @@ class UART:
 
 
 def parse_endian(endian: str):
-    if endian == 'little':
-        return '<'
-    elif endian == 'big':
-        return '>'
+    if endian == "little":
+        return "<"
+    elif endian == "big":
+        return ">"
     else:
         print("illegal endian: must be [little | big]")
         sys.exit()
 
 
 def parse_parity(parity: str):
-    if parity == 'none':
+    if parity == "none":
         return serial.PARITY_NONE
-    elif parity == 'odd':
+    elif parity == "odd":
         return serial.PARITY_EVEN
-    elif parity == 'even':
+    elif parity == "even":
         return serial.PARITY_ODD
-    elif parity == 'mark':
+    elif parity == "mark":
         return serial.PARITY_MARK
-    elif parity == 'space':
+    elif parity == "space":
         return serial.PARITY_SPACE
     else:
         print("illegal parity: must be [none | odd | even | mark | space]")
@@ -462,11 +497,11 @@ def parse_parity(parity: str):
 
 
 def parse_stopbits(stopbits: str):
-    if stopbits == '1':
+    if stopbits == "1":
         return serial.STOPBITS_ONE
-    elif stopbits == '1.5':
+    elif stopbits == "1.5":
         return serial.STOPBITS_ONE_POINT_FIVE
-    elif stopbits == '2':
+    elif stopbits == "2":
         return serial.STOPBITS_TWO
     else:
         print("illegal stopbits: must be [1 | 1.5 | 2]")
@@ -476,38 +511,92 @@ def parse_stopbits(stopbits: str):
 def parse_output(output: str):
     basename_without_ext = os.path.splitext(os.path.basename(output))[0]
     abspath = os.path.abspath(os.path.dirname(output))
-    if not(os.path.isdir(abspath)):
+    if not (os.path.isdir(abspath)):
         print("Directory Not Found for output option: %s" % abspath)
         sys.exit(1)
     return os.path.join(abspath, basename_without_ext)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Contest server for CPU Experiment')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Contest server for CPU Experiment")
     parser.add_argument(
-        'port', type=str, help='port FULL name (ex: COM3, /dev/ttyUSB*, /dev/tty.usbserial*)')
-    parser.add_argument('-p', '--program', metavar='FILE', type=str, default=None,
-                        help='input binary program name (default: None)')
-    parser.add_argument('-d', '--data', metavar='FILE', type=str,
-                        default='contest.sld', help='input data file name (default: contest.sld)')
-    parser.add_argument('-o', '--output', metavar='FILE', type=str, default='output',
-                        help='output files name (file extension is ignored) (default: output)')
-    parser.add_argument('--raw_output', metavar='N', type=int, default=None,
-                        help='number of output bytes (if you need a ppm image, set nothing)')
+        "port",
+        type=str,
+        help="port FULL name (ex: COM3, /dev/ttyUSB*, /dev/tty.usbserial*)",
+    )
     parser.add_argument(
-        '--one_byte_each',
-        action='store_true',
-        help='read one byte each (caution: may lose bits in high baudrate, but parse PPM formally)')
-    parser.add_argument('--max_n_bytes', metavar='N', type=int, default=1024, help='maximum number of bytes to be received at a time (default: 1024)')
-    parser.add_argument('--baudrate', metavar='N', type=int,
-                        default=115200, help='baudrate (default: 115200)')
-    parser.add_argument('-e', '--endian', type=str, choices=['little', 'big'], default='little',
-                        help='send data in [little | big] endian format (default: little)')
-    parser.add_argument('--parity', type=str, choices=['none', 'odd', 'even', 'mark', 'space'],
-                        default='none', help='parity type: [none | odd | even | mark | space] (default: none)')
-    parser.add_argument('--stopbits', type=str, choices=['1', '1.5', '2'],
-                        default='1', help='stop bit length: [1 | 1.5 | 2] (default: 1)')
-    parser.add_argument('--no_progress', action='store_true', help='hide progress bar')
+        "-p",
+        "--program",
+        metavar="FILE",
+        type=str,
+        default=None,
+        help="input binary program name (default: None)",
+    )
+    parser.add_argument(
+        "-d",
+        "--data",
+        metavar="FILE",
+        type=str,
+        default="contest.sld",
+        help="input data file name (default: contest.sld)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        metavar="FILE",
+        type=str,
+        default="output",
+        help="output files name (file extension is ignored) (default: output)",
+    )
+    parser.add_argument(
+        "--raw_output",
+        metavar="N",
+        type=int,
+        default=None,
+        help="number of output bytes (if you need a ppm image, set nothing)",
+    )
+    parser.add_argument(
+        "--one_byte_each",
+        action="store_true",
+        help="read one byte each (caution: may lose bits in high baudrate, but parse PPM formally)",
+    )
+    parser.add_argument(
+        "--max_n_bytes",
+        metavar="N",
+        type=int,
+        default=1024,
+        help="maximum number of bytes to be received at a time (default: 1024)",
+    )
+    parser.add_argument(
+        "--baudrate",
+        metavar="N",
+        type=int,
+        default=115200,
+        help="baudrate (default: 115200)",
+    )
+    parser.add_argument(
+        "-e",
+        "--endian",
+        type=str,
+        choices=["little", "big"],
+        default="little",
+        help="send data in [little | big] endian format (default: little)",
+    )
+    parser.add_argument(
+        "--parity",
+        type=str,
+        choices=["none", "odd", "even", "mark", "space"],
+        default="none",
+        help="parity type: [none | odd | even | mark | space] (default: none)",
+    )
+    parser.add_argument(
+        "--stopbits",
+        type=str,
+        choices=["1", "1.5", "2"],
+        default="1",
+        help="stop bit length: [1 | 1.5 | 2] (default: 1)",
+    )
+    parser.add_argument("--no_progress", action="store_true", help="hide progress bar")
     args = parser.parse_args()
     args.endian = parse_endian(args.endian)
     args.parity = parse_parity(args.parity)
@@ -521,7 +610,15 @@ if __name__ == '__main__':
     program_bytes = bin_reader(args.program, args.endian, length=True)
     data_bytes = data_reader(args.data, args.endian)
 
-    uart = UART(args.port, args.one_byte_each, args.max_n_bytes, args.baudrate, args.parity, args.stopbits, args.no_progress)
+    uart = UART(
+        args.port,
+        args.one_byte_each,
+        args.max_n_bytes,
+        args.baudrate,
+        args.parity,
+        args.stopbits,
+        args.no_progress,
+    )
 
     if program_bytes is not None:
         # wait for a 0x99 byte
@@ -541,32 +638,49 @@ if __name__ == '__main__':
         print("saving images:")
 
         # save txt image
-        with open(output_name + ".txt", 'w') as txt_fp:
+        with open(output_name + ".txt", "w") as txt_fp:
             txt_fp.write("P%d # version\n" % uart.ppm_info["version"])
-            txt_fp.write("%d %d %d # (height, width, max value)\n"
-                         % (uart.ppm_info["height"], uart.ppm_info["width"], uart.ppm_info["max"]))
-            comment = " # (r, g, b)"
-            for r, g, b in uart.ppm_img:
-                txt_fp.write("%3d %3d %3d%s\n" % (r, g, b, comment))
-                comment = ""
+
+            if uart.ppm_info["version"] == 1:
+                txt_fp.write(
+                    "%d %d # (width, height)\n"
+                    % (uart.ppm_info["width"], uart.ppm_info["height"])
+                )
+                for b in uart.ppm_img:
+                    txt_fp.write("%d" % b)
+            else:
+                txt_fp.write(
+                    "%d %d %d # (height, width, max value)\n"
+                    % (
+                        uart.ppm_info["height"],
+                        uart.ppm_info["width"],
+                        uart.ppm_info["max"],
+                    )
+                )
+                comment = " # (r, g, b)"
+                for r, g, b in uart.ppm_img:
+                    txt_fp.write("%3d %3d %3d%s\n" % (r, g, b, comment))
+                    comment = ""
 
         # save ppm image
-        with open(output_name + ".ppm", 'wb') as ppm_fp:
+        with open(output_name + ".ppm", "wb") as ppm_fp:
             ppm_fp.write(uart.raw_bin)
 
         # save png image
-        np_img = np.array(uart.ppm_img, dtype=np.uint8).reshape(uart.ppm_info["height"], uart.ppm_info["width"], 3)
+        np_img = np.array(uart.ppm_img, dtype=np.uint8).reshape(
+            uart.ppm_info["height"], uart.ppm_info["width"], 3
+        )
         Image.fromarray(np_img).save(output_name + ".png")
 
-        print("\tsaved in \"%s.[txt | ppm | png]\"." % output_name)
+        print('\tsaved in "%s.[txt | ppm | png]".' % output_name)
     else:
         # receive args.raw_output bytes of raw data
         uart.recv_raw_data(args.raw_output)
 
         print("saving raw data:")
-        with open(output_name, 'wb') as bin_fp:
+        with open(output_name, "wb") as bin_fp:
             bin_fp.write(uart.raw_bin)
-        print("\tsaved in \"%s\"." % output_name)
+        print('\tsaved in "%s".' % output_name)
 
     uart.close()
 
